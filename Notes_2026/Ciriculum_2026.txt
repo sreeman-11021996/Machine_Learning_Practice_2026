@@ -1,0 +1,22 @@
+Machine Learning :
+	EDA (Exploratory Data Analysis)
+	Feture Engineering
+	Statistics tests - z score, chi square, anova
+
+	transformation - ohe, label encoder, std/norm, ...
+	tools - train_test_split, custom transformation, pipelines
+
+	Supervised Algorithms - Regression & Classification
+		linear reg, logistic reg, svm, multiclass, dtrees, random forest, xg boost, naive bayes, kmeans, ....
+	Unsupervised Algoritms
+
+	Tims Series
+	(NLP) Natural Language Processing
+
+
+Deep Learning :
+	ANN
+	CNN - Computer Vision - Face Rec, Yolo, Semantic analysis, ...
+	RNN - LSTM, BRNN
+	NLP - using RNN's
+	Time Series - RNN

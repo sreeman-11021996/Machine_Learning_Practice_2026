@@ -54,3 +54,25 @@ Syntax (Ex) :
 =================================================================================================================================================================
 
 
+when you are using "from src.logger import logging" :
+    -> Python imports logger.py once
+    -> basicConfig() runs once
+    -> logging.root is now configured
+    -> You now hold a reference to the same module
+
+Every imported module runs its top-level code once.
+In Python, importing a module executes all top-level code in that file immediately, which is why logging.basicConfig() runs on import even without __init__.py.
+
+Visual timeline :
+    import src.logger
+            ↓
+    execute logger.py top to bottom
+            ↓
+    basicConfig() runs
+            ↓
+    module cached in sys.modules
+            ↓
+    future imports reuse it
+=================================================================================================================================================================
+
+
