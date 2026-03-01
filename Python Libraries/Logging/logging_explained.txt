@@ -1,0 +1,56 @@
+
+logging.basicConfig() is a shortcut that automatically creates a logger, handler, and formatter, which is why it’s commonly used in ML projects for simple and clean logging setups.
+=================================================================================================================================================================
+Using basicConfig :
+    logging.basicConfig(
+    filename="app.log",
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
+
+Using manual setup :
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.INFO)
+    
+    handler = logging.FileHandler("app.log")
+    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+
+
+
+=================================================================================================================================================================
+Logger -> Handler -> Formatters
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------
+Logger : A logger is an object that creates log messages.
+
+Syntax :
+    logging.info("something happened")
+
+Works:
+    -> Logger decides whether to record it
+    -> Sends it to handlers
+    -> Applies formatters
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------
+Handler : Handlers decide WHERE the log goes. Ex. Console (terminal), File (.log), Database, Cloud (AWS, GCP)
+
+Handlers : 
+    -> FileHandler - write to a file 
+
+Syntax :
+    handler = logging.FileHandler("app.log")
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------
+Formatter : Formatters decide HOW the log looks
+
+Syntax (Ex) :
+    formatter = logging.Formatter(
+    "%(asctime)s - %(levelname)s - %(filename)s - %(message)s"
+)
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+=================================================================================================================================================================
+
+
