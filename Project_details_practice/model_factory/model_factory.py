@@ -1,299 +1,211 @@
-import importlib
-
-import numpy as np
-import yaml
-
 import os
-from typing import Optional, Any, List
-from collections import namedtuple
+import yaml
+from collections import defaultdict
+from typing import Any, List
 
 from exception import CustomException
 from logger import logging
+from constants import *
 
-GRID_SEARCH_KEY = 'grid_search'
-MODULE_KEY = 'module'
-CLASS_KEY = 'class'
-PARAM_KEY = 'params'
-MODEL_SELECTION_KEY = 'model_selection'
-SEARCH_PARAM_GRID_KEY = "search_param_grid"
+import numpy as np
+from dataclasses import dataclass, field
 
-InitializedModelDetail = namedtuple("InitializedModelDetail",
-                                    ["model_serial_number", "model", "param_grid_search", "model_name"])
-
-GridSearchedBestModel = namedtuple("GridSearchedBestModel", ["model_serial_number",
-                                                             "model",
-                                                             "best_model",
-                                                             "best_parameters",
-                                                             "best_score",
-                                                             ])
-
-# not used anywhere
-BestModel = namedtuple("BestModel", ["model_serial_number",
-                                     "model",
-                                     "best_model",
-                                     "best_parameters",
-                                     "best_score", ])
-"""
-grid_search:
-  module: sklearn.model_selection
-  class: GridSearchCV
-  params:
-    cv: 3
-    verbose: 1
-
-model_selection:
-  model_0:
-    module: sklearn.tree
-    class: DecisionTreeRegressor
-    params:
-      criterion: squared_error
-      min_samples_leaf: 2
-    search_param_grid:
-      max_depth:
-        - 2
-        - 3"""
+# models
+import importlib
 
 
-def get_sample_model_config_yaml_file(export_dir: str):
+def get_sample_model_config_yaml_file(export_dir:str):
+    
     try:
+        # Sample configuration structure
         model_config = {
             GRID_SEARCH_KEY: {
                 MODULE_KEY: "sklearn.model_selection",
                 CLASS_KEY: "GridSearchCV",
                 PARAM_KEY: {
-                    "cv": 3,
-                    "verbose": 1
+                    "cv": 3,        # 3-fold cross-validation
+                    "verbose": 1    # Show progress during search
                 }
-
             },
             MODEL_SELECTION_KEY: {
-                "module_0": {
-                    MODULE_KEY: "module_of_model",
-                    CLASS_KEY: "ModelClassName",
-                    PARAM_KEY:
-                        {"param_name1": "value1",
-                         "param_name2": "value2",
-                         },
+                "module_0": {   # First model to test
+                    MODULE_KEY: "module_of_model",      # Replace with actual module
+                    CLASS_KEY: "ModelClassName",        # Replace with actual class
+                    PARAM_KEY: {
+                        "param_name1": "value1",
+                        "param_name2": "value2",
+                    },
                     SEARCH_PARAM_GRID_KEY: {
                         "param_name": ['param_value_1', 'param_value_2']
                     }
-
                 },
             }
         }
+        
+        # make directory
         os.makedirs(export_dir, exist_ok=True)
-        export_file_path = os.path.join(export_dir, "model.yaml")
-        with open(export_file_path, 'w') as file:
-            yaml.dump(model_config, file)
-        return export_file_path
+        
+        # config file path
+        export_file_path = os.path.join(export_dir, MODEL_CONFIG_FILENAME)
+        
+        # save model dict in file
+        with open(export_file_path, 'w') as file_obj:
+            yaml.dump(model_config, file_obj, default_flow_style=False)
+            
     except Exception as e:
-        raise CustomException(e)
+        raise CustomException(e) from e
 
 
-class ModelFactory:
-    def __init__(self, model_config_path: Optional[str] = None):
+
+@dataclass
+class Untuned_Model:
+    """
+    model: Instantiated scikit-learn model object
+    model_detail : dict {'model_serial_number' : 'model_0', 'model_name' : "..."}
+                    model_serial_number: ID like "model_0"
+                    model_name: String like "sklearn.tree.DecisionTreeRegressor"
+    grid_search_parameters: Dictionary of hyperparameters to search
+    """
+    model : Any
+    model_detail : dict = field(default_factory= lambda: defaultdict(str))
+    grid_search_parameters : dict = field(default_factory=dict)
+
+
+@dataclass
+class Grid_Searched_Model:
+    """
+    tuned_model : grid searched model with best parameters
+    model_detail : dict {'model_serial_number' : 'model_0', 'model_name' : "..."}
+                    model_serial_number: ID like "model_0"
+                    model_name: String like "sklearn.tree.DecisionTreeRegressor"    
+    best_parameters = grid searched best parameters for the model type (ex. decision tree)
+    metrics = {'val_r2_score' : val, 'val_r2_std' : val, 'overfit_gap' : val}
+    """
+    tuned_model : Any
+    model_detail : dict = field(default_factory= lambda: defaultdict(str))
+    best_parameters : dict = field(default_factory=dict)
+    metrics : dict = field(default_factory= lambda: defaultdict(float))
+
+    
+    
+
+class Model_Factory:
+    
+    def __init__(self, model_config_file_path:str):
         try:
-            self.config: dict = ModelFactory.read_params(model_config_path)
-
-            self.grid_search_cv_module: str = self.config[GRID_SEARCH_KEY][MODULE_KEY]
-            self.grid_search_class_name: str = self.config[GRID_SEARCH_KEY][CLASS_KEY]
-            self.grid_search_property_data: dict = dict(self.config[GRID_SEARCH_KEY][PARAM_KEY])
-
-            self.models_initialization_config: dict = dict(self.config[MODEL_SELECTION_KEY])
-
-            self.initialized_model_list : Optional [List[InitializedModelDetail]] = None
-            self.grid_searched_best_model_list : List[GridSearchedBestModel] = []
-
+            self.model_config = self.read_config_yaml_file(file_path=model_config_file_path)
+            
+            # initialize grid search details
+            self.grid_search_details: dict = self.model_config[GRID_SEARCH_KEY]
+            
+            # initalize untuned model details
+            self.models_details: dict = self.model_config[MODEL_SELECTION_KEY]
+            
+            # initialize the lists 
+            self.Grid_Searched_Models_List: List[Grid_Searched_Model] = []
+            self.Untuned_Models_List: List[Untuned_Model] = []
+             
         except Exception as e:
             raise CustomException(e) from e
-
+        
+    
     @staticmethod
-    def update_property_of_class(instance_ref: Any, property_data: dict):
+    def read_config_yaml_file(file_path:str)->dict:
+        try:
+            if file_path is None:
+                raise ValueError("Config path is given as None")
+            
+            with open(file_path, 'r') as yaml_file_obj:
+                model_config = yaml.safe_load(file_path)
+            
+            return model_config
+        
+        except Exception as e:
+            raise CustomException(e) from e
+    
+    
+    @staticmethod
+    def get_model_class_reference(module_name:str, class_name:str)->Any:
+        """
+        Dynamically import class from string
+
+        Returns:
+            Any: Example. <class sklearn.model_selection.DecisionTreeRegressor> class reference 
+        """
+        try:
+            module = importlib.import_module(module_name)
+            class_reference = getattr(module, class_name)
+        
+            return class_reference
+        
+        except Exception as e:
+            raise CustomException(e) from e
+        
+    
+    @staticmethod
+    def set_model_class_properties(model_obj:Any, property_data:dict)-> Any:
+        """
+        Set the parameters for the model object (instance_ref)
+
+        Args:
+            model_obj (Any): Example. DecisionTreeRegressor()
+            property_data (dict): {'criterion' : 'squared_error', 'min_samples_leaf' : 2,
+            'max_depth' : [2,3,4,5,6,7,8,9]}
+        """
         try:
             if not isinstance(property_data, dict):
-                raise Exception("property_data parameter required to dictionary")
-            print(property_data)
-            for key, value in property_data.items():
-                setattr(instance_ref, key, value)
-            return instance_ref
-        except Exception as e:
-            raise CustomException(e) from e
-
-    @staticmethod
-    def read_params(config_path: Optional[str]) -> dict:
-        try:
-            if config_path is None:
-                raise ValueError("config path cannot be None")
+                raise Exception("property_data parameter required to be dictionary")
             
-            with open(config_path) as yaml_file:
-                config = yaml.safe_load(yaml_file)
-            return config
+            for property_name, property_value in property_data.items():
+                setattr(model_obj, property_name, property_value)
+            
+            return model_obj
+            
         except Exception as e:
             raise CustomException(e) from e
+        
 
-    @staticmethod
-    def class_for_name(module_name : str, class_name : str):
+    def initiate_untuned_models_list(self)->None:
         try:
-            # load the module, will raise ImportError if module cannot be loaded
-            module = importlib.import_module(module_name)
-            # get the class, will raise AttributeError if class cannot be found
-            class_ref = getattr(module, class_name)
-            return class_ref
+            for model_number in self.models_details:
+                
+                # initialize base_model: DecisionTreeRegressor()
+                module_name = model_number[MODULE_KEY]
+                class_name = model_number[CLASS_KEY]
+                model_reference = self.get_model_class_reference(module_name=module_name, 
+                                                                 class_name=class_name)
+                base_model = model_reference()
+                
+                # set model parameters/property: DecisionTreeRegressor(criterion='...', 
+                # min_samples_leaf=...)
+                model_property = model_number[PARAM_KEY]  
+                model = self.set_model_class_properties(model_obj=base_model, property_data=model_property)
+                
+                
+                # grid search parameters
+                model_grid_search_parameters = model_number[SEARCH_PARAM_GRID_KEY] 
+                
+                # model details
+                model_name = model.__class__.__name__
+                
+                # initiate untuned model
+                untuned_model = Untuned_Model(model=model)
+                
+                untuned_model.grid_search_parameters = model_grid_search_parameters
+                untuned_model.model_detail[MODEL_NAME] = model_name
+                untuned_model.model_detail[MODEL_NUMBER] = model_number
+                
+                
+                # append to untuned models list
+                self.Untuned_Models_List.append(untuned_model)
+                
         except Exception as e:
-            raise CustomException(e) from e
+            raise CustomException(e) from e  
 
-    def execute_grid_search_operation(self, initialized_model: InitializedModelDetail, input_feature: np.ndarray,
-                                      output_feature: np.ndarray) -> GridSearchedBestModel:
-        """
-        excute_grid_search_operation(): function will perform paramter search operation and
-        it will return you the best optimistic  model with best paramter:
-        estimator: Model object
-        param_grid: dictionary of paramter to perform search operation
-        input_feature: your all input features
-        output_feature: Target/Dependent features
-        ================================================================================
-        return: Function will return GridSearchOperation object
-        """
+
+    def initiate_model_factory(self):
         try:
-            # instantiating GridSearchCV class
-            message = f"{'*' * 50} training {type(initialized_model.model).__name__} {'*' * 50}"
-            logging.info(message)
-            grid_search_cv_ref = ModelFactory.class_for_name(module_name=self.grid_search_cv_module,
-                                                             class_name=self.grid_search_class_name
-                                                             )
-
-            grid_search_cv = grid_search_cv_ref(estimator=initialized_model.model,
-                                                param_grid=initialized_model.param_grid_search)
-            grid_search_cv = ModelFactory.update_property_of_class(grid_search_cv,
-                                                                   self.grid_search_property_data)
-
-            grid_search_cv.fit(input_feature, output_feature)
-
-            grid_searched_best_model = GridSearchedBestModel(model_serial_number=initialized_model.model_serial_number,
-                                                             model=initialized_model.model,
-                                                             best_model=grid_search_cv.best_estimator_,
-                                                             best_parameters=grid_search_cv.best_params_,
-                                                             best_score=grid_search_cv.best_score_
-                                                             )
-            return grid_searched_best_model
+            # set up the list of untuned models
+            pass
         except Exception as e:
-            raise CustomException(e) from e
-
-    def get_initialized_model_list(self) -> List[InitializedModelDetail]:
-        """
-        This function will return a list of model details.
-        return List[ModelDetail]
-        """
-        try:
-            initialized_model_list = []
-            for model_serial_number in self.models_initialization_config.keys():
-
-                model_initialization_config = self.models_initialization_config[model_serial_number]
-                model_obj_ref = ModelFactory.class_for_name(module_name=model_initialization_config[MODULE_KEY],
-                                                            class_name=model_initialization_config[CLASS_KEY]
-                                                            )
-                model = model_obj_ref()
-
-                if PARAM_KEY in model_initialization_config:
-                    model_obj_property_data = dict(model_initialization_config[PARAM_KEY])
-                    model = ModelFactory.update_property_of_class(instance_ref=model,
-                                                                  property_data=model_obj_property_data)
-
-                param_grid_search = model_initialization_config[SEARCH_PARAM_GRID_KEY]
-                model_name = f"{model_initialization_config[MODULE_KEY]}.{model_initialization_config[CLASS_KEY]}"
-
-                model_initialization_config = InitializedModelDetail(model_serial_number=model_serial_number,
-                                                                     model=model,
-                                                                     param_grid_search=param_grid_search,
-                                                                     model_name=model_name
-                                                                     )
-
-                initialized_model_list.append(model_initialization_config)
-
-            self.initialized_model_list = initialized_model_list
-            return self.initialized_model_list
-        except Exception as e:
-            raise CustomException(e) from e
-
-    def initiate_best_parameter_search_for_initialized_model(self, initialized_model: InitializedModelDetail,
-        input_feature: np.ndarray,output_feature: np.ndarray) -> GridSearchedBestModel:
-        """
-        initiate_best_model_parameter_search(): function will perform paramter search operation and
-        it will return you the best optimistic  model with best paramter:
-        estimator: Model object
-        param_grid: dictionary of paramter to perform search operation
-        input_feature: your all input features
-        output_feature: Target/Dependent features
-        ================================================================================
-        return: Function will return a GridSearchOperation
-        """
-        try:
-            return self.execute_grid_search_operation(initialized_model=initialized_model,
-                                                      input_feature=input_feature,output_feature=output_feature)
-        except Exception as e:
-            raise CustomException(e) from e
-
-    def initiate_best_parameter_search_for_initialized_models(self,initialized_model_list: List[InitializedModelDetail],
-        input_feature: np.ndarray, output_feature: np.ndarray) -> List[GridSearchedBestModel]:
-
-        try:
-            for initialized_model in initialized_model_list:
-                grid_searched_best_model = self.initiate_best_parameter_search_for_initialized_model(
-                    initialized_model=initialized_model,
-                    input_feature=input_feature,
-                    output_feature=output_feature
-                )
-                self.grid_searched_best_model_list.append(grid_searched_best_model)
-            return self.grid_searched_best_model_list
-        except Exception as e:
-            raise CustomException(e) from e
-
-
-
-    @staticmethod
-    def get_model_detail(model_details: List[InitializedModelDetail],model_serial_number: str
-                         ) -> Optional[InitializedModelDetail]:
-        """
-        This function return ModelDetail
-        """
-        try:
-            for model_data in model_details:
-                if model_data.model_serial_number == model_serial_number:
-                    return model_data
-        except Exception as e:
-            raise CustomException(e) from e
-
-
-
-    @staticmethod
-    def get_best_model_from_grid_searched_best_model_list(grid_searched_best_model_list: List[GridSearchedBestModel],
-                                                          base_accuracy=0.6) -> GridSearchedBestModel:
-        try:
-            grid_search_best_model : Optional[GridSearchedBestModel] = None
-            for grid_searched_best_model in grid_searched_best_model_list:
-                if base_accuracy < grid_searched_best_model.best_score:
-                    logging.info(f"Acceptable model found:{grid_searched_best_model}")
-                    base_accuracy = grid_searched_best_model.best_score
-
-                    grid_search_best_model = grid_searched_best_model
-            if not grid_search_best_model:
-                raise Exception(f"None of Model has base accuracy: {base_accuracy}")
-            logging.info(f"Best model: {grid_search_best_model}")
-            return grid_search_best_model
-        except Exception as e:
-            raise CustomException(e) from e
-
-    def get_best_model(self, X, y,base_accuracy=0.6) -> GridSearchedBestModel:
-        try:
-            logging.info("Started Initializing model from config file")
-            initialized_model_list = self.get_initialized_model_list()
-            logging.info(f"Initialized model: {initialized_model_list}")
-            grid_searched_best_model_list = self.initiate_best_parameter_search_for_initialized_models(
-                initialized_model_list=initialized_model_list,
-                input_feature=X,
-                output_feature=y
-            )
-            return ModelFactory.get_best_model_from_grid_searched_best_model_list(grid_searched_best_model_list,
-                                                                                  base_accuracy=base_accuracy)
-        except Exception as e:
-            raise CustomException(e)
+            raise CustomException(e) from e    

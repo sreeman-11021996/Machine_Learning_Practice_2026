@@ -181,48 +181,19 @@ class ModelFactory:
             self.models_initialization_config: dict = dict(self.config[MODEL_SELECTION_KEY])
             
             # Initialize empty lists for tracking
-            self.initialized_model_list: Optional[List[InitializedModelDetail]] = None
+            self.initialized_model_list: List[InitializedModelDetail] = []
             self.grid_searched_best_model_list: List[GridSearchedBestModel] = []
             
         except Exception as e:
             raise CustomException(e, "Error initializing ModelFactory") from e
 
-    @staticmethod
-    def update_property_of_class(instance_ref: Any, property_data: dict) -> Any:
-        """
-        DYNAMICALLY SET ATTRIBUTES ON ANY OBJECT
-        
-        Args:
-            instance_ref (Any): Object to modify (model, GridSearchCV, etc.)
-            property_data (dict): {parameter_name: value} dictionary
-            
-        Returns:
-            Any: Modified object
-            
-        Example:
-            >>> model = DecisionTreeRegressor()
-            >>> update_property_of_class(model, {"max_depth": 5, "criterion": "squared_error"})
-            # model now has max_depth=5 and criterion="squared_error"
-        """
-        try:
-            if not isinstance(property_data, dict):
-                raise Exception("property_data parameter required to be dictionary")
-            
-            # Use setattr() to dynamically set object attributes
-            print(f"Setting properties: {property_data}")  # Debug output
-            for key, value in property_data.items():
-                setattr(instance_ref, key, value)
-            return instance_ref
-            
-        except Exception as e:
-            raise CustomException(e, "Error updating object properties") from e
 
     @staticmethod
-    def read_params(config_path: Optional[str]) -> dict:
+    def read_params(config_path: str) -> dict:
         """
         LOAD AND PARSE YAML CONFIGURATION FILE
         
-        Args:
+        Args:   
             config_path (str): Path to model.yaml
             
         Returns:
@@ -232,10 +203,10 @@ class ModelFactory:
             ValueError: If config_path is None
             CustomException: If YAML parsing fails
         """
-        try:
+        try:        
             if config_path is None:
-                raise ValueError("config path cannot be None")
-            
+                raise ValueError("Config path is given as None")
+               
             with open(config_path) as yaml_file:
                 config = yaml.safe_load(yaml_file)
             return config
@@ -243,8 +214,9 @@ class ModelFactory:
         except Exception as e:
             raise CustomException(e, f"Error reading config from {config_path}") from e
 
+
     @staticmethod
-    def class_for_name(module_name: str, class_name: str) -> Any:
+    def get_model_class_ref(module_name: str, class_name: str) -> Any:
         """
         DYNAMICALLY IMPORT CLASS FROM MODULE STRING
         
@@ -256,8 +228,23 @@ class ModelFactory:
             Any: Class reference (not instance)
             
         Example:
-            >>> class_ref = class_for_name("sklearn.tree", "DecisionTreeRegressor")
+            >>> class_ref = get_model_class_ref("sklearn.tree", "DecisionTreeRegressor")
+                Ex. class_ref  type is <class 'sklearn.tree._classes.DecisionTreeRegressor'>
             >>> model = class_ref()  # Now create instance
+            >>> getattr() = "Grab class by STRING name!"
+                Ex. getattr(sklearn.tree, "DecisionTreeRegressor") == sklearn.tree.DecisionTreeRegressor but dynamic
+        
+        import_module explained:
+            >>> import sklearn.modelselection # static method
+            >>> import_modeule("sklearn.modelselection") # dynamic method imports uising string     
+               
+        class_ref explained:
+            >>> String → Class Reference → Model Instance
+                    "sklearn.tree.DecisionTreeRegressor" 
+                                ↓ get_model_class_ref()
+                    <class 'sklearn.tree.DecisionTreeRegressor'> 
+                                ↓ ()
+                    DecisionTreeRegressor()  # Ready to train!
         """
         try:
             # Dynamically import module (raises ImportError if module missing)
@@ -268,8 +255,100 @@ class ModelFactory:
             
         except Exception as e:
             raise CustomException(e, f"Error loading {class_name} from {module_name}") from e
+        
 
-    def execute_grid_search_operation(
+    @staticmethod
+    def update_property_of_class(instance_ref: Any, property_data: dict) -> Any:
+        """
+        DYNAMICALLY SET ATTRIBUTES ON ANY OBJECT
+        
+        Args:
+            instance_ref (Any): Object to modify (model, GridSearchCV, etc.)
+            property_data (dict): {parameter_name: value} dictionary
+            
+        Returns:
+            Any: Modified object (instance_ref)
+        
+        Example:
+            >>> model = DecisionTreeRegressor()
+            >>> update_property_of_class(model, {"max_depth": 5, "criterion": "squared_error"})
+            >>> "max_depth" and "criterion" are the argument names in the model class __init__ function
+            # model now has max_depth=5 and criterion="squared_error"
+        
+            
+        setattr explained :
+            >>> setattr arguments - (instance of the class, argument name of __init__ function of the class, argument value)
+            >>> sets the argument values in the instance of the class
+        """
+        try:
+            if not isinstance(property_data, dict):
+                raise Exception("property_data parameter required to be dictionary")
+            
+            # Use setattr() to dynamically set object attributes
+            print(f"Setting properties: {property_data}")  # Debug output
+            for property_name, property_value in property_data.items():
+                setattr(instance_ref, property_name, property_value)
+                
+            return instance_ref
+            
+        except Exception as e:
+            raise CustomException(e, "Error updating object properties") from e
+
+    
+    @staticmethod
+    def get_model_detail(
+        model_details: List[InitializedModelDetail], 
+        model_serial_number: str
+    ) -> Optional[InitializedModelDetail]:
+        """
+        UTILITY: Find specific model by serial number
+        """
+        try:
+            for model_data in model_details:
+                if model_data.model_serial_number == model_serial_number:
+                    return model_data
+            return None  # Not found
+        except Exception as e:
+            raise CustomException(e, "Error finding model detail") from e
+
+    
+    @staticmethod
+    def get_best_model_from_grid_searched_best_model_list(
+        grid_searched_best_model_list: List[GridSearchedBestModel],
+        base_accuracy: float = 0.6
+    ) -> GridSearchedBestModel:
+        """
+        SELECT BEST MODEL FROM GRID SEARCH RESULTS
+        
+        LINE-BY-LINE:
+        1. Initialize best_model as None
+        2. Loop through all grid-searched models
+        3. Track model with highest CV score above base_accuracy
+        4. Raise exception if no acceptable model found
+        5. Log and return best model
+        """
+        try:
+            grid_search_best_model: Optional[GridSearchedBestModel] = None
+            for grid_searched_best_model in grid_searched_best_model_list:
+                # Found better model than current best
+                if base_accuracy < grid_searched_best_model.best_score:
+                    logging.info(f"Acceptable model found: {grid_searched_best_model}")
+                    base_accuracy = grid_searched_best_model.best_score
+                    grid_search_best_model = grid_searched_best_model
+            
+            # No acceptable model found
+            if not grid_search_best_model:
+                raise Exception(f"None of Model has base accuracy: {base_accuracy}")
+            
+            logging.info(f"Best model: {grid_search_best_model}")
+            return grid_search_best_model
+            
+        except Exception as e:
+            raise CustomException(e, "Error selecting best model") from e
+
+
+
+    def model_tuning_with_grid_search(
         self, 
         initialized_model: InitializedModelDetail, 
         input_feature: np.ndarray,
@@ -301,7 +380,7 @@ class ModelFactory:
             logging.info(message)
             
             # LINE 2: Dynamically load GridSearchCV class
-            grid_search_cv_ref = ModelFactory.class_for_name(
+            grid_search_cv_ref = self.get_model_class_ref(
                 module_name=self.grid_search_cv_module,
                 class_name=self.grid_search_class_name
             )
@@ -314,7 +393,7 @@ class ModelFactory:
             )
             
             # LINE 4: Set GridSearchCV properties (cv=3, verbose=1)
-            grid_search_cv = ModelFactory.update_property_of_class(
+            grid_search_cv = self.update_property_of_class(
                 grid_search_cv, self.grid_search_property_data
             )
             
@@ -355,7 +434,7 @@ class ModelFactory:
                 model_initialization_config = self.models_initialization_config[model_serial_number]
                 
                 # DYNAMICALLY CREATE MODEL INSTANCE
-                model_obj_ref = ModelFactory.class_for_name(
+                model_obj_ref = self.get_model_class_ref(
                     module_name=model_initialization_config[MODULE_KEY],
                     class_name=model_initialization_config[CLASS_KEY]
                 )
@@ -364,7 +443,7 @@ class ModelFactory:
                 # SET FIXED PARAMETERS (not searched)
                 if PARAM_KEY in model_initialization_config:
                     model_obj_property_data = dict(model_initialization_config[PARAM_KEY])
-                    model = ModelFactory.update_property_of_class(
+                    model = self.update_property_of_class(
                         instance_ref=model, property_data=model_obj_property_data
                     )
                 
@@ -394,10 +473,10 @@ class ModelFactory:
         output_feature: np.ndarray
     ) -> GridSearchedBestModel:
         """
-        WRAPPER: Single model grid search (calls execute_grid_search_operation)
+        WRAPPER: Single model grid search (calls model_tuning_with_grid_search)
         """
         try:
-            return self.execute_grid_search_operation(
+            return self.model_tuning_with_grid_search(
                 initialized_model=initialized_model,
                 input_feature=input_feature,
                 output_feature=output_feature
@@ -433,56 +512,8 @@ class ModelFactory:
         except Exception as e:
             raise CustomException(e, "Error in batch model parameter search") from e
 
-    @staticmethod
-    def get_model_detail(
-        model_details: List[InitializedModelDetail], 
-        model_serial_number: str
-    ) -> Optional[InitializedModelDetail]:
-        """
-        UTILITY: Find specific model by serial number
-        """
-        try:
-            for model_data in model_details:
-                if model_data.model_serial_number == model_serial_number:
-                    return model_data
-            return None  # Not found
-        except Exception as e:
-            raise CustomException(e, "Error finding model detail") from e
-
-    @staticmethod
-    def get_best_model_from_grid_searched_best_model_list(
-        grid_searched_best_model_list: List[GridSearchedBestModel],
-        base_accuracy: float = 0.6
-    ) -> GridSearchedBestModel:
-        """
-        SELECT BEST MODEL FROM GRID SEARCH RESULTS
-        
-        LINE-BY-LINE:
-        1. Initialize best_model as None
-        2. Loop through all grid-searched models
-        3. Track model with highest CV score above base_accuracy
-        4. Raise exception if no acceptable model found
-        5. Log and return best model
-        """
-        try:
-            grid_search_best_model: Optional[GridSearchedBestModel] = None
-            for grid_searched_best_model in grid_searched_best_model_list:
-                # Found better model than current best
-                if base_accuracy < grid_searched_best_model.best_score:
-                    logging.info(f"Acceptable model found: {grid_searched_best_model}")
-                    base_accuracy = grid_searched_best_model.best_score
-                    grid_search_best_model = grid_searched_best_model
-            
-            # No acceptable model found
-            if not grid_search_best_model:
-                raise Exception(f"None of Model has base accuracy: {base_accuracy}")
-            
-            logging.info(f"Best model: {grid_search_best_model}")
-            return grid_search_best_model
-            
-        except Exception as e:
-            raise CustomException(e, "Error selecting best model") from e
-
+    
+    
     def get_best_model(self, X: np.ndarray, y: np.ndarray, base_accuracy: float = 0.6) -> GridSearchedBestModel:
         """
         MAIN ENTRY POINT: Complete automated model selection pipeline
