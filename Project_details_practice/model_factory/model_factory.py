@@ -1,7 +1,7 @@
 import os
 import yaml
 from collections import defaultdict
-from typing import Any, List
+from typing import Any, List, Tuple
 
 from exception import CustomException
 from logger import logging
@@ -102,7 +102,7 @@ class Model_Factory:
             self.models_details: dict = self.model_config[MODEL_SELECTION_KEY]
             
             # initialize the lists 
-            self.Grid_Searched_Models_List: List[Grid_Searched_Model] = []
+            self.Grid_Searched_Best_Models_List: List[Grid_Searched_Model] = []
             self.Untuned_Models_List: List[Untuned_Model] = []
              
         except Exception as e:
@@ -165,47 +165,183 @@ class Model_Factory:
             raise CustomException(e) from e
         
 
+    def create_untuned_model(self, model_number:str, model_config:dict)->Untuned_Model:
+        """
+        Create single untuned model from config dict.
+    
+        Args:
+            model_config: {'module': 'sklearn.tree', 'class': 'DecisionTreeRegressor', ...}
+    
+        Returns:
+            Fully configured Untuned_Model instance
+        """
+        try:            
+            # 1. Get model class → instantiate
+            module_name = model_config[MODULE_KEY]
+            class_name = model_config[CLASS_KEY]
+            model_class = self.get_model_class_reference(module_name=module_name, class_name=class_name)
+            base_model = model_class()            
+            
+            # 2. Set fixed parameters
+            model_property = model_config[PARAM_KEY]  
+            model = self.set_model_class_properties(model_obj=base_model, property_data=model_property)
+            
+            # 3. Get grid search parameters 
+            model_grid_search_parameters = model_config[SEARCH_PARAM_GRID_KEY]
+            
+            # 4. Get the model details
+            model_name = model.__class__.__name__
+            model_detail={MODEL_NAME_KEY:model_name,MODEL_NUMBER_KEY:model_number}
+            
+            # 4. Create untuned model
+            untuned_model = Untuned_Model(
+                model = model,
+                grid_search_parameters = model_grid_search_parameters,
+                model_detail = model_detail
+                )
+            
+            return untuned_model
+                 
+        except Exception as e:
+            raise CustomException(e) from e
+        
+
     def initiate_untuned_models_list(self)->None:
         try:
-            for model_number in self.models_details:
+            for model_number, model_config in self.models_details.items():
                 
-                # initialize base_model: DecisionTreeRegressor()
-                module_name = model_number[MODULE_KEY]
-                class_name = model_number[CLASS_KEY]
-                model_reference = self.get_model_class_reference(module_name=module_name, 
-                                                                 class_name=class_name)
-                base_model = model_reference()
+                # 1. create an untuned model instance 
+                untuned_model = self.create_untuned_model(model_number=model_number, 
+                                                          model_config=model_config)
                 
-                # set model parameters/property: DecisionTreeRegressor(criterion='...', 
-                # min_samples_leaf=...)
-                model_property = model_number[PARAM_KEY]  
-                model = self.set_model_class_properties(model_obj=base_model, property_data=model_property)
-                
-                
-                # grid search parameters
-                model_grid_search_parameters = model_number[SEARCH_PARAM_GRID_KEY] 
-                
-                # model details
-                model_name = model.__class__.__name__
-                
-                # initiate untuned model
-                untuned_model = Untuned_Model(model=model)
-                
-                untuned_model.grid_search_parameters = model_grid_search_parameters
-                untuned_model.model_detail[MODEL_NAME] = model_name
-                untuned_model.model_detail[MODEL_NUMBER] = model_number
-                
-                
-                # append to untuned models list
+                # 2. append to untuned models list
                 self.Untuned_Models_List.append(untuned_model)
                 
         except Exception as e:
             raise CustomException(e) from e  
+        
 
-
-    def initiate_model_factory(self):
+    def compute_grid_search_cv(self, untuned_model:Untuned_Model, input_feature:np.ndarray,
+                               output_feature:np.ndarray)->Tuple[str,dict]:
+        """
+        Compute the Grid Search CV on a single untuned model 
+    
+        Args:
+            untuned_model: Untuned_Mode(model, model_detail, grid_search_parameters)
+    
+        Returns: (model_name, grid_search_result)
+            A Tuple of model_name and grid search results dict containing the metrics and their parameters
+        """
         try:
-            # set up the list of untuned models
-            pass
+            # 1. Get grid search class → instantiate : GridSearchCV()
+            module_name = self.grid_search_details[MODULE_KEY]
+            class_name = self.grid_search_details[CLASS_KEY]
+            model_class = self.get_model_class_reference(module_name=module_name, class_name=class_name)
+            
+            # 2. Create grid search instance : {estimator : model, params : dict}
+            estimator = untuned_model.model
+            grid_search_parameters = untuned_model.grid_search_parameters
+            base_grid_search = model_class(estimator=estimator,param_grid=grid_search_parameters)  
+            
+            # 2. Set fixed parameters : {cv, verbose}
+            grid_search_property = self.grid_search_details[PARAM_KEY]  
+            grid_search_cv = self.set_model_class_properties(model_obj=base_grid_search, 
+                                                    property_data=grid_search_property)
+            
+            # 3. Train grid search cv
+            grid_search_cv.fit(input_feature, output_feature)
+            
+            
+            # 4. Get the result from grid search cv with metrics and parameters
+            grid_search_result: dict = grid_search_cv.cv_results_
+            model_name: str = grid_search_cv.estimator.__class__.__name__
+                        
+            return model_name, grid_search_result
+        
+        except Exception as e:
+            raise CustomException(e) from e
+        
+
+    def get_grid_search_cv_results(self, input_feature:np.ndarray, output_feature:np.ndarray)->dict:
+        """
+        Get the dictonary of grid search cv results 
+
+        Return : grid_search_cv_results : dict
+                {
+                    'model_1' : 
+                    {
+                        'model_name' : 'DecisionTree',
+                        'model' : DecisionTreeRegressor(criterion='squared_error', min_samples_leaf=2), 
+                        'grid_search_results' : {metrics & parameters}
+                    }
+                }
+        """
+        try:
+            grid_search_cv_results:dict = defaultdict(dict)
+            
+            for untuned_model in self.Untuned_Models_List:
+                # 1. compute the grid search cv 
+                model_name, grid_search_result = self.compute_grid_search_cv(untuned_model=untuned_model,
+                                                                              input_feature=input_feature,
+                                                                              output_feature=output_feature)
+                
+                # 2. store the results in the dictionary
+                model_number = untuned_model.model_detail[MODEL_NUMBER_KEY]
+                
+                grid_search_cv_results[model_number][MODEL_NAME_KEY] = model_name
+                grid_search_cv_results[model_number][MODEL_KEY] = untuned_model.model
+                grid_search_cv_results[model_number][GRID_SEARCH_RESULTS_KEY] = grid_search_result
+                
+            return grid_search_cv_results   
+                
+        except Exception as e:
+            raise CustomException(e) from e
+        
+
+    def get_best_grid_searched_model(self, input_feature:np.ndarray, output_feature:np.ndarray,
+        test_r2_mean:list, train_r2_mean:list, test_r2_std:list, parameters:dict)->Grid_Searched_Model:
+        
+        try:
+            grid_search_iter = len(test_r2_mean)
+            
+        
+        except Exception as e:
+            raise CustomException(e) from e
+        
+
+    def best_grid_searched_models_list(self, grid_search_cv_results: dict,
+            input_feature:np.ndarray, output_feature:np.ndarray)->List[Grid_Searched_Model]:
+        try:
+            for model_number, grid_search_result in grid_search_cv_results.items():
+                
+                # get the grid search metrics of the model
+                test_r2_mean: list = list(grid_search_result[TEST_R2_MEAN])
+                train_r2_mean: list = list(grid_search_result[TRAIN_R2_MEAN])
+                test_r2_std: list = list(grid_search_result[TEST_R2_STD])
+                
+                # get the grid search parameters of the model
+                parameters: dict = grid_search_result[PARAM_KEY]
+                
+                # get best grid search model
+        except Exception as e:
+            raise CustomException(e) from e
+
+
+    def initiate_model_factory(self, input_feature:np.ndarray, output_feature:np.ndarray):
+        try:
+            logging.info(f"Starting the Model Factory")
+            
+            # 1. set up the list of untuned models
+            self.initiate_untuned_models_list()
+            logging.info(f"initiated the untuned models list")
+            
+            # 2. Do Grid Search CV for on untuned models list 
+            grid_search_cv_results: dict = self.get_grid_search_cv_results(input_feature=input_feature,
+                                                                           output_feature=output_feature)
+            logging.info(f"Performed Grid Search CV on all the untuned models")
+            
+            # 3. Get the best grid search cv models
+            
+            
         except Exception as e:
             raise CustomException(e) from e    
