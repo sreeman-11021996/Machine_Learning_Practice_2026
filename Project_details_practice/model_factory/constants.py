@@ -20,9 +20,9 @@ MODEL_NUMBER_KEY = 'model_serial_number'
 GRID_SEARCH_RESULT_LIST_KEY = 'grid_search_result_list'
 MODEL_KEY = 'model'
 
-TEST_R2_MEAN = 'test_r2_mean'
-TRAIN_R2_MEAN = 'train_r2_mean'
-TEST_R2_STD = 'test_r2_std'
+TEST_R2_MEAN_KEY = 'test_r2_mean'
+TRAIN_R2_MEAN_KEY = 'train_r2_mean'
+TEST_R2_STD_KEY = 'test_r2_std'
 
 # Grid Searched Model class
 VAL_R2_KEY = 'val_r2_score'
