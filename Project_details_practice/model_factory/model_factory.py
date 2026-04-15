@@ -356,7 +356,7 @@ class Model_Factory:
             raise CustomException(e) from e
         
 
-    def get_best_model(self, model_number:str, grid_search_result:dict, base_r2=BASE_R2, 
+    def create_best_model(self, model_number:str, grid_search_result:dict, base_r2=BASE_R2, 
                                      overfit_gap=OVERFIT_GAP)->Best_Model:
         """
         ...
@@ -432,12 +432,12 @@ class Model_Factory:
             raise CustomException(e) from e
         
 
-    def best_models_list(self, grid_search_cv_results: dict)->None:
+    def initialize_best_models_list(self, grid_search_cv_results: dict)->None:
         try:
             # compute the best grid models list
             for model_number, grid_search_result in grid_search_cv_results.items():
                 # 1. get best grid search model
-                best_grid_model: Best_Model = self.get_best_model(model_number=model_number,
+                best_grid_model: Best_Model = self.create_best_model(model_number=model_number,
                                         grid_search_result=grid_search_result)
                 
                 # 2. add to the list
@@ -461,7 +461,7 @@ class Model_Factory:
             logging.info(f"Performed Grid Search CV on all the untuned models")
             
             # 3. Get the best grid search cv models
-            self.best_models_list(grid_search_cv_results=grid_search_cv_results)
+            self.initialize_best_models_list(grid_search_cv_results=grid_search_cv_results)
             logging.info(f"Computed the best model parameters for each model using grid search cv in a list")
         
         except Exception as e:
