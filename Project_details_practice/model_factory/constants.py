@@ -17,9 +17,18 @@ MODEL_NAME_KEY = 'model_name'
 MODEL_NUMBER_KEY = 'model_serial_number'
 
 # Grid Search CV 
-GRID_SEARCH_RESULTS_KEY = 'grid_search_results'
+GRID_SEARCH_RESULT_LIST_KEY = 'grid_search_result_list'
 MODEL_KEY = 'model'
 
 TEST_R2_MEAN = 'test_r2_mean'
 TRAIN_R2_MEAN = 'train_r2_mean'
 TEST_R2_STD = 'test_r2_std'
+
+# Grid Searched Model class
+VAL_R2_KEY = 'val_r2_score'
+VAL_R2_STD_KEY = 'val_r2_std'
+OVERFIT_GAP_KEY = 'overfit_gap'
+
+# Best Model class
+BASE_R2 = 0.6
+OVERFIT_GAP = 0.1

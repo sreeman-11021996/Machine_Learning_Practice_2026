@@ -1,7 +1,7 @@
 import os
 import yaml
 from collections import defaultdict
-from typing import Any, List, Tuple
+from typing import Any, List, Tuple, Optional
 
 from exception import CustomException
 from logger import logging
@@ -67,12 +67,22 @@ class Untuned_Model:
     grid_search_parameters: Dictionary of hyperparameters to search
     """
     model : Any
-    model_detail : dict = field(default_factory= lambda: defaultdict(str))
+    model_detail : dict = field(default_factory= dict)
     grid_search_parameters : dict = field(default_factory=dict)
 
 
 @dataclass
 class Grid_Searched_Model:
+    """ 
+    best_parameters = grid searched best parameters for the model type (ex. decision tree)
+    metrics = {'val_r2_score' : val, 'val_r2_std' : val, 'overfit_gap' : val}
+    """
+    best_parameters : dict = field(default_factory=dict)
+    metrics : dict = field(default_factory= lambda: defaultdict(float))
+
+
+@dataclass
+class Best_Model:
     """
     tuned_model : grid searched model with best parameters
     model_detail : dict {'model_serial_number' : 'model_0', 'model_name' : "..."}
@@ -85,7 +95,6 @@ class Grid_Searched_Model:
     model_detail : dict = field(default_factory= lambda: defaultdict(str))
     best_parameters : dict = field(default_factory=dict)
     metrics : dict = field(default_factory= lambda: defaultdict(float))
-
     
     
 
@@ -102,7 +111,7 @@ class Model_Factory:
             self.models_details: dict = self.model_config[MODEL_SELECTION_KEY]
             
             # initialize the lists 
-            self.Grid_Searched_Best_Models_List: List[Grid_Searched_Model] = []
+            self.Grid_Searched_Best_Models_List: List[Best_Model] = []
             self.Untuned_Models_List: List[Untuned_Model] = []
              
         except Exception as e:
@@ -116,7 +125,7 @@ class Model_Factory:
                 raise ValueError("Config path is given as None")
             
             with open(file_path, 'r') as yaml_file_obj:
-                model_config = yaml.safe_load(file_path)
+                model_config = yaml.safe_load(yaml_file_obj)
             
             return model_config
         
@@ -183,8 +192,9 @@ class Model_Factory:
             base_model = model_class()            
             
             # 2. Set fixed parameters
-            model_property = model_config[PARAM_KEY]  
-            model = self.set_model_class_properties(model_obj=base_model, property_data=model_property)
+            if PARAM_KEY in model_config:
+                model_property = model_config[PARAM_KEY]  
+                model = self.set_model_class_properties(model_obj=base_model, property_data=model_property)
             
             # 3. Get grid search parameters 
             model_grid_search_parameters = model_config[SEARCH_PARAM_GRID_KEY]
@@ -262,17 +272,59 @@ class Model_Factory:
             raise CustomException(e) from e
         
 
+    def create_grid_searched_model_list(self, grid_search_result:dict)->List[Grid_Searched_Model]:
+        """
+        We take the result dictionary and convert it into a list of grid searched model instances
+
+        Returns:
+            List[Grid_Searched_Model]: [(best_parameters,metrics),...]
+            Grid_Searched_Model : 
+                best_parameters : {'C': 1, 'kernel': 'rbf'}
+                metrics : {'val_r2_score' : val, 'val_r2_std' : val, 'overfit_gap' : val}
+        """
+        try:
+            # 1. get the metrics and parameters from grid_searc_result
+            test_r2_mean = grid_search_result.get(TEST_R2_MEAN, [])
+            train_r2_mean = grid_search_result.get(TRAIN_R2_MEAN, [])
+            test_r2_std = grid_search_result.get(TEST_R2_STD, [])
+            parameters = grid_search_result[PARAM_KEY]
+        
+            # 2. create Grid Searched Model instance for all the parameter combos 
+            grid_search_iter = len(test_r2_mean)
+            grid_searched_model_list : List[Grid_Searched_Model] = []
+
+            for iter in range(grid_search_iter):
+                grid_searched_model = Grid_Searched_Model()
+
+                # metrics
+                grid_searched_model.metrics[VAL_R2_KEY] = test_r2_mean[iter]
+                grid_searched_model.metrics[VAL_R2_STD_KEY] = test_r2_std[iter]
+                grid_searched_model.metrics[OVERFIT_GAP_KEY] = train_r2_mean[iter] - test_r2_mean[iter]
+
+                # parameters
+                grid_searched_model.best_parameters = parameters[iter]
+
+                # append to Grid_Model_List
+                grid_searched_model_list.append(grid_searched_model)
+                
+            # 3. return the grid searched model list
+            return grid_searched_model_list
+        
+        except Exception as e:
+            raise CustomException(e) from e
+        
+
     def get_grid_search_cv_results(self, input_feature:np.ndarray, output_feature:np.ndarray)->dict:
         """
         Get the dictonary of grid search cv results 
-
+        
         Return : grid_search_cv_results : dict
                 {
                     'model_1' : 
                     {
                         'model_name' : 'DecisionTree',
                         'model' : DecisionTreeRegressor(criterion='squared_error', min_samples_leaf=2), 
-                        'grid_search_results' : {metrics & parameters}
+                        'grid_search_result_list' : [Grid_Searched_Model instances]
                     }
                 }
         """
@@ -285,12 +337,18 @@ class Model_Factory:
                                                                               input_feature=input_feature,
                                                                               output_feature=output_feature)
                 
+                # 2. get list of Grid_Searched_Model instances
+                grid_search_result_list: List[Grid_Searched_Model] = self.create_grid_searched_model_list(
+                                                                    grid_search_result=grid_search_result)
+                
                 # 2. store the results in the dictionary
                 model_number = untuned_model.model_detail[MODEL_NUMBER_KEY]
                 
+                
+                
                 grid_search_cv_results[model_number][MODEL_NAME_KEY] = model_name
                 grid_search_cv_results[model_number][MODEL_KEY] = untuned_model.model
-                grid_search_cv_results[model_number][GRID_SEARCH_RESULTS_KEY] = grid_search_result
+                grid_search_cv_results[model_number][GRID_SEARCH_RESULT_LIST_KEY] = grid_search_result_list
                 
             return grid_search_cv_results   
                 
@@ -298,31 +356,93 @@ class Model_Factory:
             raise CustomException(e) from e
         
 
-    def get_best_grid_searched_model(self, input_feature:np.ndarray, output_feature:np.ndarray,
-        test_r2_mean:list, train_r2_mean:list, test_r2_std:list, parameters:dict)->Grid_Searched_Model:
-        
+    def get_best_model(self, model_number:str, grid_search_result:dict, base_r2=BASE_R2, 
+                                     overfit_gap=OVERFIT_GAP)->Best_Model:
+        """
+        ...
+        Args:
+            model_number (str): 'model_1' 
+            grid_search_result (dict): 
+                    {
+                        'model_name' : 'DecisionTree',
+                        'model' : DecisionTreeRegressor(criterion='squared_error', min_samples_leaf=2), 
+                        'grid_search_result_list' : [Grid_Searched_Model instances]
+                    }
+        Returns:
+            Best_Model: 
+                tuned_model : grid searched model with best parameters
+                model_detail : dict {
+                                    'model_serial_number' : 'model_0', 
+                                    'model_name' : "sklearn.tree.DecisionTreeRegressor"
+                                    }
+                best_parameters = {'param_1':val_1, ...}
+                metrics = {'val_r2_score' : val, 'val_r2_std' : val, 'overfit_gap' : val}
+        """
         try:
-            grid_search_iter = len(test_r2_mean)
+            # 1. initiate variales required
+            local_base_r2 = base_r2
+            local_overfit_gap = overfit_gap
+            grid_models_list: List[Grid_Searched_Model] = grid_search_result[GRID_SEARCH_RESULT_LIST_KEY]
+            best_model: Optional[Grid_Searched_Model] = None 
             
-        
+            # 2. search for the best model in list 
+            for grid_model in grid_models_list:
+                
+                # get the r2 score and overfit gap of the model
+                grid_model_r2 = grid_model.metrics[VAL_R2_KEY]
+                grid_model_overfit_gap = grid_model.metrics[OVERFIT_GAP_KEY]
+                
+                # greater r2 score wins (or) for same r2 score, lower overfit gap wins
+                if ((grid_model_r2 > local_base_r2) and (grid_model_overfit_gap < overfit_gap)) or (
+                    (grid_model_r2 == local_base_r2) and (grid_model_overfit_gap < local_overfit_gap)):
+                    
+                    best_model = grid_model
+                    local_base_r2 = grid_model_r2
+                    local_overfit_gap = grid_model_overfit_gap
+
+
+            # 3. check if no model meets criteria
+            if best_model is None:
+                model_name = grid_search_result[MODEL_NAME_KEY]
+                raise ValueError(
+                    f"No valid {model_name} (model_no={model_number}): "
+                    f"R²≥{base_r2:.3f}, gap≤{overfit_gap:.3f}")
+                
+                
+            # 4. get the Best_model arguments
+            best_parameters: dict = best_model.best_parameters
+            metrics: dict = best_model.metrics
+            model_detail: dict = {MODEL_NUMBER_KEY: model_number, 
+                                  MODEL_NAME_KEY: grid_search_result[MODEL_NAME_KEY]}
+            untuned_model = grid_search_result[MODEL_KEY]
+            tuned_model = self.set_model_class_properties(model_obj=untuned_model,
+                                                          property_data=best_parameters)
+            
+            # 5. initialize the Best_model instance
+            best_grid_model = Best_Model(
+                tuned_model = tuned_model,
+                model_detail = model_detail,
+                best_parameters = best_parameters,
+                metrics = metrics
+            )
+                    
+            return best_grid_model    
+                    
         except Exception as e:
             raise CustomException(e) from e
         
 
-    def best_grid_searched_models_list(self, grid_search_cv_results: dict,
-            input_feature:np.ndarray, output_feature:np.ndarray)->List[Grid_Searched_Model]:
+    def best_models_list(self, grid_search_cv_results: dict)->None:
         try:
+            # compute the best grid models list
             for model_number, grid_search_result in grid_search_cv_results.items():
+                # 1. get best grid search model
+                best_grid_model: Best_Model = self.get_best_model(model_number=model_number,
+                                        grid_search_result=grid_search_result)
                 
-                # get the grid search metrics of the model
-                test_r2_mean: list = list(grid_search_result[TEST_R2_MEAN])
-                train_r2_mean: list = list(grid_search_result[TRAIN_R2_MEAN])
-                test_r2_std: list = list(grid_search_result[TEST_R2_STD])
+                # 2. add to the list
+                self.Grid_Searched_Best_Models_List.append(best_grid_model)
                 
-                # get the grid search parameters of the model
-                parameters: dict = grid_search_result[PARAM_KEY]
-                
-                # get best grid search model
         except Exception as e:
             raise CustomException(e) from e
 
@@ -341,7 +461,8 @@ class Model_Factory:
             logging.info(f"Performed Grid Search CV on all the untuned models")
             
             # 3. Get the best grid search cv models
-            
-            
+            self.best_models_list(grid_search_cv_results=grid_search_cv_results)
+            logging.info(f"Computed the best model parameters for each model using grid search cv in a list")
+        
         except Exception as e:
             raise CustomException(e) from e    
