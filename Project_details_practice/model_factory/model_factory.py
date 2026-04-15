@@ -116,8 +116,10 @@ class Model_Factory:
              
         except Exception as e:
             raise CustomException(e) from e
-        
-    
+   
+   
+   
+   # 1. functionality needed in class
     @staticmethod
     def read_config_yaml_file(file_path:str)->dict:
         try:
@@ -131,7 +133,6 @@ class Model_Factory:
         
         except Exception as e:
             raise CustomException(e) from e
-    
     
     @staticmethod
     def get_model_class_reference(module_name:str, class_name:str)->Any:
@@ -150,7 +151,6 @@ class Model_Factory:
         except Exception as e:
             raise CustomException(e) from e
         
-    
     @staticmethod
     def set_model_class_properties(model_obj:Any, property_data:dict)-> Any:
         """
@@ -173,7 +173,9 @@ class Model_Factory:
         except Exception as e:
             raise CustomException(e) from e
         
-
+   
+        
+    # 2. creating untuned models list
     def create_untuned_model(self, model_number:str, model_config:dict)->Untuned_Model:
         """
         Create single untuned model from config dict.
@@ -215,7 +217,6 @@ class Model_Factory:
         except Exception as e:
             raise CustomException(e) from e
         
-
     def initiate_untuned_models_list(self)->None:
         try:
             for model_number, model_config in self.models_details.items():
@@ -231,6 +232,8 @@ class Model_Factory:
             raise CustomException(e) from e  
         
 
+
+    # 3. grid search cv list
     def compute_grid_search_cv(self, untuned_model:Untuned_Model, input_feature:np.ndarray,
                                output_feature:np.ndarray)->Tuple[str,dict]:
         """
@@ -271,8 +274,7 @@ class Model_Factory:
         except Exception as e:
             raise CustomException(e) from e
         
-
-    def create_grid_searched_model_list(self, grid_search_result:dict)->List[Grid_Searched_Model]:
+    def create_grid_search_cv_list(self, grid_search_result:dict)->List[Grid_Searched_Model]:
         """
         We take the result dictionary and convert it into a list of grid searched model instances
 
@@ -313,8 +315,7 @@ class Model_Factory:
         except Exception as e:
             raise CustomException(e) from e
         
-
-    def get_grid_search_cv_results(self, input_feature:np.ndarray, output_feature:np.ndarray)->dict:
+    def initialize_grid_search_cv_dict(self, input_feature:np.ndarray, output_feature:np.ndarray)->dict:
         """
         Get the dictonary of grid search cv results 
         
@@ -338,7 +339,7 @@ class Model_Factory:
                                                                               output_feature=output_feature)
                 
                 # 2. get list of Grid_Searched_Model instances
-                grid_search_result_list: List[Grid_Searched_Model] = self.create_grid_searched_model_list(
+                grid_search_result_list: List[Grid_Searched_Model] = self.create_grid_search_cv_list(
                                                                     grid_search_result=grid_search_result)
                 
                 # 2. store the results in the dictionary
@@ -355,7 +356,9 @@ class Model_Factory:
         except Exception as e:
             raise CustomException(e) from e
         
+        
 
+    # 4. creating best models list
     def create_best_model(self, model_number:str, grid_search_result:dict, base_r2=BASE_R2, 
                                      overfit_gap=OVERFIT_GAP)->Best_Model:
         """
@@ -431,7 +434,6 @@ class Model_Factory:
         except Exception as e:
             raise CustomException(e) from e
         
-
     def initialize_best_models_list(self, grid_search_cv_results: dict)->None:
         try:
             # compute the best grid models list
@@ -447,6 +449,8 @@ class Model_Factory:
             raise CustomException(e) from e
 
 
+
+    # 5. main control function
     def initiate_model_factory(self, input_feature:np.ndarray, output_feature:np.ndarray):
         try:
             logging.info(f"Starting the Model Factory")
@@ -456,7 +460,7 @@ class Model_Factory:
             logging.info(f"initiated the untuned models list")
             
             # 2. Do Grid Search CV for on untuned models list 
-            grid_search_cv_results: dict = self.get_grid_search_cv_results(input_feature=input_feature,
+            grid_search_cv_results: dict = self.initialize_grid_search_cv_dict(input_feature=input_feature,
                                                                            output_feature=output_feature)
             logging.info(f"Performed Grid Search CV on all the untuned models")
             
