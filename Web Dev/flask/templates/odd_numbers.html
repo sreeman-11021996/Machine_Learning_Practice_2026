@@ -1,0 +1,20 @@
+<!doctype html>
+
+<html>
+    <head>
+        <title>Odd Numbers Page using a for loop</title>            
+    </head>
+
+    <body>
+        <h1>Odd Numbers Page!</h1>
+        <p>Number Limit : {{limit}}!</p>
+
+        <p>Odd Numbers upto the Limit:</p>
+        {% for num in range(limit) %}
+            {% if num % 2 == 1 %}
+                <p>{{num}}</p>
+            {% endif %}
+        {% endfor %}
+
+    </body>
+</html>

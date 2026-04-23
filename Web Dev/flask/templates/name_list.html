@@ -1,0 +1,18 @@
+<!doctype html>
+
+<html>
+    <head>
+        <title>Name List Page printing a list</title>            
+    </head>
+
+    <body>
+        <h1>Name List Page!</h1>
+        <p>List : {{names}}!</p>
+
+        <p>Printing the Names in the list:</p>
+        {% for name in names %}
+            <p>{{name}}</p>
+        {% endfor %}
+
+    </body>
+</html>
